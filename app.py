@@ -1,5 +1,5 @@
 from flask import Flask,jsonify,make_response,render_template,request, session, redirect, url_for
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, set_access_cookies, unset_jwt_cookies
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, set_access_cookies, unset_jwt_cookies
 from flask_jwt_extended import JWTManager
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS,cross_origin
@@ -21,6 +21,7 @@ dt = datetime.now()
 
 app.config['JWT_SECRET_KEY'] = 'admin1234'
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30.0)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)  # Duración del token de actualización
 
 app.secret_key = 'admin1234'
 
@@ -42,10 +43,11 @@ def loginToken():
 
     except Exception as e:
         print(f'No se pudieron obtener las credenciales del usuario. Error: {e}')
+        return jsonify({'message': 'No se puedieron obtener las credenciales de usuario.'}),400
     
     if not username or not password:
         print("Se requiere tanto el nombre de usuario como la contrasena")
-        return 'Datos vacios'
+        return jsonify({'message': 'No se indicaron las credenciales de acceso.'}),400
 
     # Se realiza la conexion a la BD
     connect = conectar_bd()
@@ -62,14 +64,14 @@ def loginToken():
     if usuario.user_eliminado == 1:
 
         print('Usuario deshabilitado')
-        return jsonify({'message': 'Usuario deshabilitado'}),200
+        return jsonify({'message': 'Usuario deshabilitado, porfavor contactese con el administrador.'}),400
     
     if not usuario or not check_password_hash(usuario.pass_usuario, password):
 
         print("Contraseña almacenada en la base de datos:", usuario.pass_usuario)
         print("Contraseña proporcionada en el formulario:", password)
 
-        return jsonify({'message': 'Usuario o clave invalida'}),200
+        return jsonify({'message': 'Usuario o clave invalida'}),401
     
     else:
 
@@ -84,50 +86,69 @@ def loginToken():
             'ID': usuario.ID,
             'username': usuario.name_usuario,
             'correo': usuario.correo_usuario,
-            'password': usuario.pass_usuario,
             'role': usuario.rol
         }
-
-        session['user_data'] = user_data
 
         print("Generando token.....")
         # Generar token JWT
         access_token = create_access_token(identity=user_data)
-        
+        refresh_token = create_refresh_token(identity=user_data)
+
+        # Obtener el tiempo de expiración del token de acceso
+        access_token_expiration = datetime.now() + timedelta(hours=1)
+
         cursor.close()
         connect.close()
 
         #return response
-        return jsonify({'access_token': access_token, 'message': 'Inicio de sesión exitoso'}), 200
+        return jsonify({'access_token': access_token,
+                        'message': 'Inicio de sesión exitoso',
+                        'refresh_token': refresh_token,
+                        'access_token_expiration': access_token_expiration
+                        }), 200
     
+@app.route("/refresh", methods=["POST"])
+@jwt_required(refresh=True)
+def refresh():
+    identity = get_jwt_identity()
+    access_token = create_access_token(identity=identity)
+    return jsonify(access_token=access_token)
 
 @app.route('/logout', methods=['POST'])
+@jwt_required()
 def logout():
 
-    conn = conectar_bd()
-    cursor = conn.cursor()
+    try:
 
-    # Crea una respuesta con una redirección a la página de inicio
-    response = make_response()
-    # Elimina el token de acceso de las cookies
-    #response.set_cookie('access_token_cookie', '', expires=0)
+        current_user = get_jwt_identity()
 
-    user_data = session["user_data"]
-    username = user_data["username"]
+        conn = conectar_bd()
+        cursor = conn.cursor()
 
-    print(f'Usuario logout: {username}')
+        # Crea una respuesta con una redirección a la página de inicio
+        
+        # Elimina el token de acceso de las cookies
+        #response.set_cookie('access_token_cookie', '', expires=0)
 
-    user_activo = False
+        user_data = current_user["user_data"]
+        username = user_data["username"]
 
-    cursor.execute("UPDATE usuarios SET user_activo = ? WHERE name_usuario = ?", (user_activo, username))
-    conn.commit()
+        print(f'Usuario logout: {username}')
 
-    session.clear()
+        user_activo = False
 
-    cursor.close()
-    conn.close()
-    
-    return response
+        cursor.execute("UPDATE usuarios SET user_activo = ? WHERE name_usuario = ?", (user_activo, username))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+    except Exception as e:
+
+        print(e)
+        jsonify({'message': 'Error al cerrar sesion, intentelo nuevamente'})
+
+    return jsonify({'message': 'Sesion terminada con exito'})
 
 @app.route('/users')
 @jwt_required()
@@ -139,7 +160,7 @@ def Usuarios():
         #current_user = 'Administrador'
         print('Validando rol de usuario ...')
 
-        if(current_user['role'] == 'Administrador'):
+        if(current_user['user_data']['role'] == 'Administrador'):
         #if(current_user == 'Administrador'):
 
             print('Conectandose a la BD ...')
@@ -165,25 +186,31 @@ def Usuarios():
             #print(f'Usuario actual: {current_user["username"]}')
 
             #return render_template('agregarUsuario.html', usuarios = usuarios, current_user = current_user)
-            return jsonify({'Usuarios': usuarios}), 200
+            return jsonify({'message:':'Acceso otorgado','Usuarios': usuarios}), 200
+        
         else:
-            print("No tiene permisos para acceder a esta ruta!")
+
+            print("No tiene permisos para acceder a esta ruta.")
             #return render_template('login.html')
-            return jsonify({'Acceso denegado'})
+            return jsonify({'message:':'Acceso denegado'}), 401
         
     except Exception as e:
         print(e)
+        return jsonify({'message:':'Error al obtener los datos de usuarios.'}), 401
 
 
 @app.route('/add-user', methods=['POST'])
+@jwt_required()
 def AddUser():
 
+    current_user = get_jwt_identity()
+
     try:
-        user_data = session.get('user_data')
+        user_data = current_user['user_data']
 
         print(f'Data Usuario: {user_data}')
 
-        if user_data and user_data["role"] == 'Administrador':
+        if user_data['role'] == 'Administrador':
 
             try:
 
@@ -199,27 +226,29 @@ def AddUser():
 
                 role_user = ''
 
-                if role == "1":
-                    role_user = 'Usuario'
-                elif role == "2":
+                if role == "Administrador":
                     role_user = 'Administrador'
+                elif role == "Usuario":
+                    role_user = 'Usuario'
                 else:
                     print("Error al definir rol de usuario. Rol no reconocido !")
+                    return jsonify({'message:':'Error al definir rol de usuario. Rol no reconocido.'}), 400
 
             except Exception as e:
 
                 print(f'Error: {e}')
-                return 'Error al obtener los datos del usuario'
-
+                return jsonify({'message:':'Error al obtener los datos del usuario.'}), 400
+            
             try:
+                
                 conn = conectar_bd()
                 cursor = conn.cursor()
 
                 cursor.execute('SELECT * FROM usuarios WHERE name_usuario = ?', (username,))
                 if cursor.fetchone():
 
-                    return 'El nombre de usuario ya está en uso'
-     
+                    return jsonify({'message:':'El nombre de usuario ya está en uso.'}), 400
+
                 cursor.execute("INSERT INTO usuarios (name_usuario, pass_usuario, correo_usuario, user_activo, user_eliminado, rol) VALUES (?, ?, ?, ?, ?, ?)", (username, pass_hash,correo, 0, 0, role_user))
 
                 # Confirmar los cambios y cerrar la conexión
@@ -229,20 +258,21 @@ def AddUser():
             except Exception as e:
 
                 print(f'Error con la BD: {e}')
-                return 'Error con la BD'
+                return jsonify({'message:':'Error con la BD.'}), 400
 
-            return 'Validado'
+            return jsonify({'message:':'Validado.'}), 200
         
         else:
 
             print('Sin privilegios')
-            return 'Sin privilegios'
+            return jsonify({'message:':'Sin privilegios.'}), 401
     
     except Exception as e:
         print(f'Error al crear usuario: {e}')
-        return 'Error al crear usuario'
+        return jsonify({'message:':'Error al crear usuario.'}), 400
     
 @app.route('/cambiar_rol/<int:idUsuario>', methods=['POST'])
+@jwt_required()
 def change_role(idUsuario):
 
     new_role = request.form.get('nuevoRol')
@@ -264,14 +294,15 @@ def change_role(idUsuario):
         cursor.close()
         conn.close()
 
-        return "Rol modificado exitosamente"
-
+        return jsonify({'message:':'Rol modificado exitosamente.'}), 200
+    
     except Exception as e:
 
         print(f"Error al modificar rol: {e}")
-        return "Error al modificar rol"
+        return jsonify({'message:':'Error al modificar rol.'}), 200
 
 @app.route('/deshabilitar_usuario/<int:idUsuario>', methods=['POST'])
+@jwt_required()
 def deshabilitar_usuario(idUsuario):
 
     resultado = ''
@@ -279,16 +310,19 @@ def deshabilitar_usuario(idUsuario):
     if request.method == 'POST':
         
         # Llamar a la función que actualiza el estado del usuario en la base de datos
+        
         resultado = actualizar_estado_usuario(idUsuario, 1)
         print(resultado)
-        return resultado
-        
+        return jsonify({'message:':resultado}), 200
+         
     else:
-        resultado = 'Metodo no permitido !'
-        return resultado
+
+        resultado = 'Metodo no permitido.'
+        return jsonify({'message:':resultado}), 400
     
 
 @app.route('/habilitar_usuario/<int:idUsuario>', methods=['POST'])
+@jwt_required()
 def habilitar_usuario(idUsuario):
 
     resultado = ''
@@ -298,11 +332,12 @@ def habilitar_usuario(idUsuario):
         # Llamar a la función que actualiza el estado del usuario en la base de datos
         resultado = actualizar_estado_usuario(idUsuario, 0)
         print(resultado)
-        return resultado
+        return jsonify({'message:':resultado}), 200
         
     else:
-        resultado = 'Metodo no permitido !'
-        return resultado
+
+        resultado = 'Metodo no permitido.'
+        return jsonify({'message:':resultado}), 400
     
 def actualizar_estado_usuario(idUsuario, estado):
 
@@ -316,7 +351,7 @@ def actualizar_estado_usuario(idUsuario, estado):
         sql_query = "UPDATE usuarios SET user_eliminado = ? WHERE ID = ?"
         cursor.execute(sql_query, (estado, idUsuario))
 
-        # Confirmar la transacción 
+        # Confirmar la transacción
         conn.commit()
 
         # Cerrar el cursor y la conexión
@@ -349,13 +384,10 @@ def reset_password():
             cursor.execute('SELECT * FROM usuarios WHERE name_usuario = ?', (username,))
             usernameBD = cursor.fetchone()
 
-            cursor.close()
-            conn.close()
-
         except Exception as e:
 
             print(f'Error al validar usuario en la BD: {e}')
-            return 'Error consultar en la BD.'
+            return jsonify({'message:':'Error consultar en la BD.'}), 400
 
         # Valida que el usuario exista en la bd
         if usernameBD:
@@ -363,13 +395,11 @@ def reset_password():
             print(usernameBD)
             codigo_verificacion = generar_codigo()
 
-            session['verify_code'] = {
+            cursor.execute("INSERT INTO codigos_verificacion (username, codigo, tiempo_emision) VALUES (?, ?, ?)",
+                               (username, codigo_verificacion, datetime.now()))
 
-                'username': username, 
-                'codigo':codigo_verificacion,
-                'tiempo':datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Store the current time as a string
-
-            }
+            conn.commit()
+            conn.close()
            
             print(f'Codigo de verificacion: {codigo_verificacion}')
 
@@ -387,16 +417,16 @@ def reset_password():
             
             enviar_correo(destinatarios, asunto, mensaje)
             
-            return 'Validado'
+            return jsonify({'message:':'Validado'}), 200
         
         else:
 
             print(f'Usuario no existe')
-            return 'El Usuario no existe en la BD'
+            return jsonify({'message:':'El Usuario no existe en la BD'}), 400
 
     else:
 
-        return 'Error usuario'
+        return jsonify({'message:':'Error al obtener el nombre de usuario'}), 400
 
 def generar_codigo():
     return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(6))
@@ -404,44 +434,58 @@ def generar_codigo():
 @app.route('/verify-code', methods=['POST'])
 def verify_code():
 
-    code1 = request.form['code1']
-    code2 = request.form['code2']
-    code3 = request.form['code3']
-    code4 = request.form['code4']
-    code5 = request.form['code5']
-    code6 = request.form['code6']
+    #code1 = request.form['code1']
+    #code2 = request.form['code2']
+    #code3 = request.form['code3']
+    #code4 = request.form['code4']
+    #code5 = request.form['code5']
+    #code6 = request.form['code6']
 
-    code_verify = f'{code1}{code2}{code3}{code4}{code5}{code6}'
-    print(f'Codigo Servidor: {session['verify_code']['codigo']}')
-    print(f'Codigo HTML: {code_verify}')
+    #code_verify = f'{code1}{code2}{code3}{code4}{code5}{code6}'
 
-    if session['verify_code']['codigo'] == code_verify:
+    code_verify = request.form['code_verification']
+    username = request.form['username']
+
+    try:
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        # Buscar el código de verificación en la base de datos
+        cursor.execute('SELECT * FROM codigos_verificacion WHERE username = ? AND codigo = ?', (username, code_verify))
+        codigo_bd = cursor.fetchone()
+
+        if codigo_bd:
+
+            tiempo_emision = codigo_bd['tiempo_emision']
+
+            if datetime.now() - tiempo_emision > timedelta(minutes=5):
+                # El código ha expirado
+                return jsonify({'message:':'Expirado'}), 401
+            
+            else:
+                # El código es válido
+                return jsonify({'message:':'Validado'}), 200
+            
+        else:
+            # El código no coincide
+           
+            return jsonify({'message:':'Codigo incorrecto'}), 401
         
-        tiempo_emision = datetime.strptime(session['verify_code']['tiempo'], "%Y-%m-%d %H:%M:%S")
+    except Exception as e:
 
-        if datetime.now() - tiempo_emision > timedelta(minutes=5):
-
-            session.pop('verify_code', None)
-
-            print('El código ha expirado.')
-
-            return 'Expirado'
-    
-        #if session['verify_code']['tiempo']
-
-        print('Codigo validado !')
-
-        return 'Validado'
-
-    else:
-
-        print('Codigo no coinciden ... Intente nuevamente!')
-        return 'Error'
+        print(f'Error al verificar el código en la BD: {e}')
+        return jsonify({'message:':'Error al verificar el código'}), 400
 
 @app.route('/change-password', methods=['POST'])
 def change_password():
 
     password = request.form['password']
+    password_rep = request.form['reppassword']
+
+    username = request.form['username']
+
+    if password == password_rep:
+        print('Las claves coinciden ..')
 
     if password:
 
@@ -449,8 +493,6 @@ def change_password():
 
         # Generar el hash de la contraseña
         pass_hash = generate_password_hash(password)
-
-        username = session['verify_code']['username']
 
         if username:
 
@@ -474,19 +516,17 @@ def change_password():
             except Exception as e:
 
                 print(f'{e}')
-                return f'Error al actualizar clave en la BD: {e}'
-
-            session.pop('verify_code', None)
-
-            return 'Validado'
+                return jsonify({'message:':'Error al actualizar clave en la BD'}), 400
+            
+            return jsonify({'message:':'Validado'}), 200
         
         else:
 
-            return 'Error'
+            return jsonify({'message:':'No se pudo obtener el usuario'}), 400
         
     else:
 
-        return 'Error'
+        return jsonify({'message:':'No se pudo validar la contrasena, intentelo nuevamente.'}), 400
     
 if __name__ == "__main__":
-    app.run(debug = True,host="0.0.0.0")
+    app.run(debug = True)
