@@ -6,7 +6,7 @@ from flask_cors import CORS,cross_origin
 from datetime import datetime, timedelta
 import requests,json,os,fnmatch,shutil
 import time, locale
-from connect_db_odbc import conectar_bd
+from connect_db_odbc import conectar_bd_test
 from correoVerificacion import enviar_correo
 import random
 import string
@@ -50,7 +50,7 @@ def loginToken():
         return jsonify({'message': 'No se indicaron las credenciales de acceso.'}),400
 
     # Se realiza la conexion a la BD
-    connect = conectar_bd()
+    connect = conectar_bd_test()
 
     cursor = connect.cursor()
 
@@ -122,7 +122,7 @@ def logout():
 
         current_user = get_jwt_identity()
 
-        conn = conectar_bd()
+        conn = conectar_bd_test()
         cursor = conn.cursor()
 
         # Crea una respuesta con una redirección a la página de inicio
@@ -165,7 +165,7 @@ def Usuarios():
 
             print('Conectandose a la BD ...')
             # Establecer la conexión a la base de datos
-            conn = conectar_bd()
+            conn = conectar_bd_test()
             # Crear un cursor para ejecutar consultas SQL
             cursor = conn.cursor()
 
@@ -241,7 +241,7 @@ def AddUser():
             
             try:
                 
-                conn = conectar_bd()
+                conn = conectar_bd_test()
                 cursor = conn.cursor()
 
                 cursor.execute('SELECT * FROM usuarios WHERE name_usuario = ?', (username,))
@@ -279,7 +279,7 @@ def change_role(idUsuario):
 
     try:
         # Establecer la conexión a la base de datos
-        conn = conectar_bd()
+        conn = conectar_bd_test()
         # Crear un cursor para ejecutar consultas SQL
         cursor = conn.cursor()
 
@@ -343,7 +343,7 @@ def actualizar_estado_usuario(idUsuario, estado):
 
     try:
         # Establecer la conexión a la base de datos
-        conn = conectar_bd()
+        conn = conectar_bd_test()
         # Crear un cursor para ejecutar consultas SQL
         cursor = conn.cursor()
 
@@ -377,7 +377,7 @@ def reset_password():
 
         try:
 
-            conn = conectar_bd()
+            conn = conectar_bd_test()
             #Crear un cursor para ejecutar consultas SQL
             cursor = conn.cursor()
 
@@ -448,7 +448,7 @@ def verify_code():
 
     try:
 
-        conn = conectar_bd()
+        conn = conectar_bd_test()
         cursor = conn.cursor()
         # Buscar el código de verificación en la base de datos
         cursor.execute('SELECT * FROM codigos_verificacion WHERE username = ? AND codigo = ?', (username, code_verify))
@@ -500,7 +500,7 @@ def change_password():
 
             try:
 
-                conn = conectar_bd()
+                conn = conectar_bd_test()
                 # Crear un cursor para ejecutar consultas SQL
                 cursor = conn.cursor()
 
