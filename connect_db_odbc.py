@@ -3,16 +3,18 @@ import pyodbc
 # server = 'localhost\sqlexpress' # for a named instance
 # server = 'myserver,port' # to specify an alternate port
 #server = 'WIN-V5M4DR7Q1K1\SQLDEV'
-server = 'SOPORTE2\\SQLEXPRESS' 
+server = 'MOONLIGHT\\SQLEXPRESS'
+# 'MOONLIGHT\\SQLEXPRESS'
+# 'SOPORTE2\\SQLEXPRESS'
 #database = 'db_santiago_medical'
 database = 'db_stgo_medical'
 username = 'sa' 
 password = 'zxcdewq123.,**' 
 
-#def conectar_bd():
-#    return pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';UID='+username+';PWD='+password)
+def conectar_bd():
+    return pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';UID='+username+';PWD='+password)
 
-
+"""
 def conectar_bd_test():
     try:
         conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';UID='+username+';PWD='+password)
@@ -36,3 +38,4 @@ if conn:
     # Realizar operaciones con la conexión
     # ...
     conn.close()
+"""
