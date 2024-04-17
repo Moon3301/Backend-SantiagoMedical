@@ -119,7 +119,8 @@ def loginToken():
         return jsonify({'access_token': access_token,
                         'message': 'Inicio de sesión exitoso',
                         'refresh_token': refresh_token,
-                        'access_token_expiration': access_token_expiration
+                        'access_token_expiration': access_token_expiration,
+                        'data_user':user_data
                         }), 200
     
 @app.route("/refresh", methods=["POST"])
@@ -260,8 +261,10 @@ def AddUser():
                 password = request.json['password']
                 role = request.json['role']
                 correo = request.json['correo']
+                descuento = request.json['descuento']
+                listaEsp = request.json['listaEsp']
 
-                print(f'Datos Recopilados del HTML: Usuario: {username}, Clave: {password}, Rol: {role}, correo: {correo}')
+                print(f'Datos Recopilados del HTML: Usuario: {username}, Clave: {password}, Rol: {role}, Correo: {correo}, Descuento: {descuento}, Lista Especialistas: {listaEsp}')
 
                 # Generar el hash de la contraseña
                 pass_hash = generate_password_hash(password)
@@ -569,6 +572,109 @@ def change_password():
     else:
 
         return jsonify({'message':'No se pudo validar la contrasena, intentelo nuevamente.'}), 400
+
+
+@app.route('/obtener_especialidades', methods=['GET'])
+@jwt_required()
+def getEspecialidades():
+
+    try:
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        # Buscar el código de verificación en la base de datos
+        cursor.execute('SELECT * FROM especialidades')
+        esp_BD = cursor.fetchall()
+
+        especialidades_json = []
+        for esp in esp_BD:
+            esp_dict = {
+                "ID": esp[0],
+                "Nombre":esp[1]
+            }
+            especialidades_json.append(esp_dict)
+
+        if esp_BD:
+
+            print(esp_BD)
+
+            return jsonify({'message':'Validado', 'especialidades':especialidades_json}), 200
+            
+        else:
+            
+           
+            return jsonify({'message':'No se logro obtener la data'}), 400
+        
+    except Exception as e:
+
+        print(f'Error al verificar el código en la BD: {e}')
+        return jsonify({'message':'Error al verificar el código'}), 400
+
+@app.route('/agregar_especialista', methods=['POST'])
+@jwt_required()
+def addEspecialista():
+
+    try:
+
+        med_nombre = request.json['med_nombre']
+        med_apellido = request.json['med_apellido']
+        esp_ID = request.json['esp_ID']
+        account_ID = request.json['account_ID']
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        cursor.execute("INSERT INTO medicos (med_nombre, med_apellido, esp_ID, account_ID) VALUES (?, ?, ?, ?)", (med_nombre, med_apellido,esp_ID,account_ID))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
     
+        return jsonify({'message':'Validado'}), 200
+            
+    except Exception as e:
+
+        print(f'Error al verificar el código en la BD: {e}')
+        return jsonify({'message':'Error al verificar el código'}), 400
+
+
+@app.route('/listar_especialistas', methods=['GET'])
+@jwt_required()
+def listarEspecialistas():
+
+    try:
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM medicos")
+        especialistasBD = cursor.fetchall()
+
+        especialistas_json = []
+        for esp in especialistasBD:
+            esp_dict = {
+                "med_ID": esp[0],
+                "med_nombre":esp[1],
+                "med_apellido":esp[2],
+                "esp_ID":esp[3],
+                "account_ID":esp[4],
+            }
+            especialistas_json.append(esp_dict)
+
+        cursor.close()
+        conn.close()
+    
+        return jsonify({'message':'Validado', 'especialistas':especialistas_json}), 200
+            
+    except Exception as e:
+
+        print(f'Error al verificar el código en la BD: {e}')
+        return jsonify({'message':'Error al verificar el código'}), 400
+
+
+
+
+
 if __name__ == "__main__":
     app.run(debug = True)

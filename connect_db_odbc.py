@@ -3,9 +3,12 @@ import pyodbc
 # server = 'localhost\sqlexpress' # for a named instance
 # server = 'myserver,port' # to specify an alternate port
 #server = 'WIN-V5M4DR7Q1K1\SQLDEV'
-server = 'MOONLIGHT\\SQLEXPRESS'
+#server = 'MOONLIGHT\\SQLEXPRESS'
 # 'MOONLIGHT\\SQLEXPRESS'
 # 'SOPORTE2\\SQLEXPRESS'
+
+# STGOMED-NEWB0T\SQLEXPRESS
+server = 'STGOMED-NEWB0T\\SQLEXPRESS'
 #database = 'db_santiago_medical'
 database = 'db_stgo_medical'
 username = 'sa' 
