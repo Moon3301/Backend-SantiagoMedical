@@ -3,13 +3,14 @@ from flask_jwt_extended import create_access_token, create_refresh_token, jwt_re
 from flask_jwt_extended import JWTManager
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS,cross_origin
-from datetime import datetime, timedelta
+from datetime import timedelta, datetime, timezone
 import requests,json,os,fnmatch,shutil
 import time, locale
 from connect_db_odbc import conectar_bd
 from correoVerificacion import enviar_correo
 import random
 import string
+import calendar
 
 requests.packages.urllib3.disable_warnings()
 app = Flask(__name__)
@@ -20,7 +21,7 @@ locale.setlocale(locale.LC_ALL, "es_ES.UTF-8")
 dt = datetime.now()
 
 app.config['JWT_SECRET_KEY'] = 'admin1234'
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30.0)
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=2)
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)  # Duración del token de actualización
 
 app.secret_key = 'admin1234'
@@ -99,8 +100,17 @@ def loginToken():
         access_token = create_access_token(identity=user_data)
         refresh_token = create_refresh_token(identity=user_data)
 
-        # Obtener el tiempo de expiración del token de acceso
-        access_token_expiration = datetime.now() + timedelta(hours=1)
+        # Calcula el tiempo actual en UTC
+        tiempo_actual_utc = datetime.now(timezone.utc)
+
+        # Suma 2 minutos al tiempo actual
+        tiempo_futuro_utc = tiempo_actual_utc + timedelta(minutes=2)
+
+        # Convierte a tiempo UNIX (segundos desde el epoch)
+        tiempo_unix_utc = tiempo_futuro_utc.timestamp()
+
+        # Redondea el tiempo UNIX
+        access_token_expiration = round(tiempo_unix_utc)
 
         cursor.close()
         connect.close()
@@ -116,8 +126,21 @@ def loginToken():
 @jwt_required(refresh=True)
 def refresh():
     identity = get_jwt_identity()
+
+    # Calcula el tiempo actual en UTC
+    tiempo_actual_utc = datetime.now(timezone.utc)
+
+    # Suma 2 minutos al tiempo actual
+    tiempo_futuro_utc = tiempo_actual_utc + timedelta(minutes=2)
+
+    # Convierte a tiempo UNIX (segundos desde el epoch)
+    tiempo_unix_utc = tiempo_futuro_utc.timestamp()
+
+    # Redondea el tiempo UNIX
+    access_token_expiration = round(tiempo_unix_utc)
+   
     access_token = create_access_token(identity=identity)
-    return jsonify(access_token=access_token)
+    return jsonify({'access_token':access_token, 'access_token_expiration':access_token_expiration})
 
 @app.route('/logout', methods=['POST'])
 @jwt_required()
