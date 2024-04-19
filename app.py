@@ -623,12 +623,12 @@ def addEspecialista():
         med_nombre = request.json['med_nombre']
         med_apellido = request.json['med_apellido']
         esp_ID = request.json['esp_ID']
-        
+        med_estado = 1
 
         conn = conectar_bd()
         cursor = conn.cursor()
 
-        cursor.execute("INSERT INTO medicos (med_nombre, med_apellido, esp_ID) VALUES (?, ?, ?)", (med_nombre, med_apellido,esp_ID))
+        cursor.execute("INSERT INTO medicos (med_nombre, med_apellido, esp_ID, med_estado) VALUES (?, ?, ?, ?)", (med_nombre, med_apellido,esp_ID, med_estado))
         conn.commit()
 
         cursor.close()
@@ -653,7 +653,7 @@ def listarEspecialistas():
 
         cursor.execute("""
 
-            SELECT med_ID, med_nombre, med_apellido, esp_nombre FROM medicos
+            SELECT med_ID, med_nombre, med_apellido, med_estado, esp_nombre FROM medicos
             JOIN especialidades ON medicos.esp_ID = especialidades.esp_ID;
                        
         """)
@@ -662,10 +662,13 @@ def listarEspecialistas():
         especialistas_json = []
         for esp in especialistasBD:
             esp_dict = {
+
                 "med_ID": esp[0],
                 "med_nombre":esp[1],
                 "med_apellido":esp[2],
-                "esp_nombre":esp[3],
+                "med_estado":esp[3],
+                "esp_nombre":esp[4],
+
             }
             especialistas_json.append(esp_dict)
 
@@ -790,10 +793,17 @@ def asociarAccountMedico():
         account_ID = request.json['account_ID']
         med_ID = request.json['med_ID']
 
+        print(f'Account_ID: {account_ID}')
+
+        print(f'Med_ID: {med_ID}')
+
         conn = conectar_bd()
         cursor = conn.cursor()
 
         cursor.execute("INSERT INTO accounts_medicos (account_ID, med_ID) VALUES (?, ?)",(account_ID, med_ID))
+        conn.commit()
+
+        cursor.execute("UPDATE medicos SET med_estado = ? WHERE med_ID = ?",(0, med_ID))
         conn.commit()
 
         cursor.close()
@@ -815,10 +825,15 @@ def eliminarAccountMedico():
         account_ID = request.json['account_ID']
         med_ID = request.json['med_ID']
 
+        #acc_med_ID = request.json['acc_med_ID']
+
         conn = conectar_bd()
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM accounts_medicos WHERE account_ID = ? AND med_ID = ?",(account_ID, med_ID))
+        conn.commit()
+
+        cursor.execute("UPDATE medicos SET med_estado = ? WHERE med_ID = ?",(1, med_ID))
         conn.commit()
 
         cursor.close()
@@ -828,8 +843,8 @@ def eliminarAccountMedico():
     
     except Exception as e:
 
-        print(f'Error al asociar account con medico: {e}')
-        return jsonify({'message':'Error al asociar account con medico'}), 400
+        print(f'Error al eliminar account con medico: {e}')
+        return jsonify({'message':'Error al eliminar account con medico'}), 400
     
 @app.route('/getDataShowUsers', methods=['POST'])
 @jwt_required()
