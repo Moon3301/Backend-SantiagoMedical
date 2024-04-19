@@ -256,28 +256,26 @@ def AddUser():
         if current_user['role'] == 'Administrador':
 
             try:
+               
+                account_username = request.json['account_username']
+                account_password = request.json['account_password']
+                account_status = request.json['account_status']
+                account_active = request.json['account_active']
+                rol_ID = request.json['rol_ID']
+                account_email = request.json['account_email']
 
-                username = request.json['username']
-                password = request.json['password']
-                role = request.json['role']
-                correo = request.json['correo']
-                descuento = request.json['descuento']
-                listaEsp = request.json['listaEsp']
+                if rol_ID == 'Usuario':
+                    rol_ID = 1
+                
+                if(rol_ID == 'Administrador'):
+                    rol_ID = 2
 
-                print(f'Datos Recopilados del HTML: Usuario: {username}, Clave: {password}, Rol: {role}, Correo: {correo}, Descuento: {descuento}, Lista Especialistas: {listaEsp}')
+                print(f'Datos Recopilados del HTML: Usuario: {account_username}, Clave: {account_password}, Rol: {rol_ID}, Correo: {account_email}')
 
                 # Generar el hash de la contraseña
-                pass_hash = generate_password_hash(password)
+                pass_hash = generate_password_hash(account_password)
 
                 role_user = ''
-
-                if role == "Administrador":
-                    role_user = 'Administrador'
-                elif role == "Usuario":
-                    role_user = 'Usuario'
-                else:
-                    print("Error al definir rol de usuario. Rol no reconocido !")
-                    return jsonify({'message':'Error al definir rol de usuario. Rol no reconocido.'}), 400
 
             except Exception as e:
 
@@ -289,23 +287,28 @@ def AddUser():
                 conn = conectar_bd()
                 cursor = conn.cursor()
 
-                cursor.execute('SELECT * FROM usuarios WHERE name_usuario = ?', (username,))
+                cursor.execute('SELECT * FROM accounts WHERE account_username = ?', (account_username,))
+                
                 if cursor.fetchone():
 
                     return jsonify({'message':'El nombre de usuario ya está en uso.'}), 400
 
-                cursor.execute("INSERT INTO usuarios (name_usuario, pass_usuario, correo_usuario, user_activo, user_eliminado, rol) VALUES (?, ?, ?, ?, ?, ?)", (username, pass_hash,correo, 0, 0, role_user))
-
+                cursor.execute("INSERT INTO accounts (account_username, account_password, account_status, account_active, rol_ID, account_email) VALUES (?, ?, ?, ?, ?, ?)", (account_username, pass_hash, 0, 1, rol_ID, account_email))
                 # Confirmar los cambios y cerrar la conexión
                 conn.commit()
+
+                cursor.execute('SELECT * FROM accounts WHERE account_username = ?', (account_username,))
+                user = cursor.fetchone()
+
+                print(user)
                 conn.close()
 
             except Exception as e:
 
                 print(f'Error con la BD: {e}')
-                return jsonify({'message':'Error con la BD.'}), 400
+                return jsonify({'message':'Error con la BD'}), 400
 
-            return jsonify({'message':'Validado.'}), 200
+            return jsonify({'message':'Validado', 'user':user.account_ID}), 200
         
         else:
 
@@ -608,8 +611,8 @@ def getEspecialidades():
         
     except Exception as e:
 
-        print(f'Error al verificar el código en la BD: {e}')
-        return jsonify({'message':'Error al verificar el código'}), 400
+        print(f'Error al consultar registro en la BD: {e}')
+        return jsonify({'message':'Error BD'}), 400
 
 @app.route('/agregar_especialista', methods=['POST'])
 @jwt_required()
@@ -620,12 +623,12 @@ def addEspecialista():
         med_nombre = request.json['med_nombre']
         med_apellido = request.json['med_apellido']
         esp_ID = request.json['esp_ID']
-        account_ID = request.json['account_ID']
+        
 
         conn = conectar_bd()
         cursor = conn.cursor()
 
-        cursor.execute("INSERT INTO medicos (med_nombre, med_apellido, esp_ID, account_ID) VALUES (?, ?, ?, ?)", (med_nombre, med_apellido,esp_ID,account_ID))
+        cursor.execute("INSERT INTO medicos (med_nombre, med_apellido, esp_ID) VALUES (?, ?, ?)", (med_nombre, med_apellido,esp_ID))
         conn.commit()
 
         cursor.close()
@@ -635,8 +638,8 @@ def addEspecialista():
             
     except Exception as e:
 
-        print(f'Error al verificar el código en la BD: {e}')
-        return jsonify({'message':'Error al verificar el código'}), 400
+        print(f'Error al consultar registro en la BD: {e}')
+        return jsonify({'message':'Error BD'}), 400
 
 
 @app.route('/listar_especialistas', methods=['GET'])
@@ -648,7 +651,12 @@ def listarEspecialistas():
         conn = conectar_bd()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM medicos")
+        cursor.execute("""
+
+            SELECT med_ID, med_nombre, med_apellido, esp_nombre FROM medicos
+            JOIN especialidades ON medicos.esp_ID = especialidades.esp_ID;
+                       
+        """)
         especialistasBD = cursor.fetchall()
 
         especialistas_json = []
@@ -657,8 +665,7 @@ def listarEspecialistas():
                 "med_ID": esp[0],
                 "med_nombre":esp[1],
                 "med_apellido":esp[2],
-                "esp_ID":esp[3],
-                "account_ID":esp[4],
+                "esp_nombre":esp[3],
             }
             especialistas_json.append(esp_dict)
 
@@ -669,12 +676,262 @@ def listarEspecialistas():
             
     except Exception as e:
 
-        print(f'Error al verificar el código en la BD: {e}')
-        return jsonify({'message':'Error al verificar el código'}), 400
+        print(f'Error al obtener registro en la BD: {e}')
+        return jsonify({'message':'Error BD'}), 400
 
+@app.route('/obtenerPermisosUsuario', methods=['POST'])
+@jwt_required()
+def getPermisosUsuario():
 
+    try:
 
+        account_ID = request.json['account_ID']
 
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM permisos_account WHERE account_ID = ?",(account_ID))
+        permisos_account = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+    
+        return jsonify({'message':'Validado', 'permisos_account':permisos_account}), 200
+            
+    except Exception as e:
+
+        print(f'Error al consultar registro en la BD: {e}')
+        return jsonify({'message':'Error BD'}), 400
+
+@app.route('/agregar-permisosUsuario', methods=['POST'])
+@jwt_required()
+def agregar_permisosUsuario():
+
+    try:
+
+        account_ID = request.json['account_ID']
+        per_porc_desc = request.json['per_porc_desc']
+
+        print(f'ID obtenido desde el front:  {account_ID}')
+        print(f'Porcentaje de descuento obtenido desde el front:  {per_porc_desc}')
+
+        descuento = int(per_porc_desc) * 10
+        
+        print(f'Porcentaje de desc a insertar en la BD: {descuento}')
+
+        print('conectando a la BD')
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        print('Verificando si usuario ya tiene permisos creados ...')
+        cursor.execute("SELECT * FROM permisos_account WHERE account_ID = ?", (account_ID))
+        
+        if cursor.fetchone():
+            
+            print('Usuario ya tiene permisos creados, debe actualizar los permisos.')
+            return jsonify({'message': f'Permiso ya existente para el usuario, debe modificar el permiso del usuario {account_ID}'})
+
+        print('Insertando registros en tabla permisos...')
+        cursor.execute("INSERT INTO permisos_account (account_ID, per_porc_desc) VALUES (?, ?)",(account_ID, descuento))
+        conn.commit()
+
+        print('Permisos insertados de forma correcta ...')
+        print('Cerrando conexion ...')
+
+        cursor.close()
+        conn.close()
+    
+        return jsonify({'message':'Validado'}), 200
+            
+    except Exception as e:
+
+        print(f'Error al insertar registro en la BD: {e}')
+        return jsonify({'message':'Error BD'}), 400
+    
+@app.route('/update-permisosUsuario', methods=['POST'])
+@jwt_required()
+def update_permisosUsuario():
+
+    try:
+
+        account_ID = request.json['account_ID']
+        per_porc_desc = request.json['per_porc_desc']
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM permisos_account WHERE account_ID = ?", (account_ID))
+        permisos = cursor.fetchone
+
+        if(permisos):
+           
+            cursor.execute("UPDATE permisos_account SET per_porc_desc = ? WHERE account_ID = ? ",(per_porc_desc, account_ID))
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+        
+            return jsonify({'message':'Validado'}), 200
+        
+        else:
+            return jsonify({'message':'No existe el permiso creado para el usuario'})
+        
+    except Exception as e:
+
+        print(f'Occurio un error al realizar al insertar los datos en la BD: {e}')
+        return jsonify({'message':'Error BD'}), 400
+    
+@app.route('/asociarAccountMedico', methods=['POST'])
+@jwt_required()
+def asociarAccountMedico():
+
+    try:
+
+        account_ID = request.json['account_ID']
+        med_ID = request.json['med_ID']
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        cursor.execute("INSERT INTO accounts_medicos (account_ID, med_ID) VALUES (?, ?)",(account_ID, med_ID))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+    
+        return jsonify({'message':'Validado'}), 200
+    
+    except Exception as e:
+
+        print(f'Error al asociar account con medico: {e}')
+        return jsonify({'message':'Error al asociar account con medico'}), 400
+    
+@app.route('/eliminarAccountMedico', methods=['POST'])
+@jwt_required()
+def eliminarAccountMedico():
+
+    try:
+
+        account_ID = request.json['account_ID']
+        med_ID = request.json['med_ID']
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM accounts_medicos WHERE account_ID = ? AND med_ID = ?",(account_ID, med_ID))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+    
+        return jsonify({'message':'Validado'}), 200
+    
+    except Exception as e:
+
+        print(f'Error al asociar account con medico: {e}')
+        return jsonify({'message':'Error al asociar account con medico'}), 400
+    
+@app.route('/getDataShowUsers', methods=['POST'])
+@jwt_required()
+def getDataShowUsers():
+
+    try:
+
+        account_ID = request.json['account_ID']
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+                       
+            SELECT accounts.account_ID, accounts.account_username, accounts.account_email ,accounts.account_status, accounts.account_active, rol_accounts.rol_nombre, permisos_account.per_porc_desc FROM accounts
+                JOIN permisos_account ON accounts.account_ID = permisos_account.account_ID
+                JOIN rol_accounts ON accounts.rol_ID = rol_accounts.rol_ID
+                WHERE accounts.account_ID = ?;
+                       
+        """,(account_ID))
+        
+        account = cursor.fetchall()
+
+        account_json = []
+        for esp in account:
+            esp_dict = {
+                "account_ID": esp[0],
+                "account_username":esp[1],
+                "account_email":esp[2],
+                "account_status":esp[3],
+                "account_active":esp[4],
+                "rol_nombre":esp[5],
+                "per_porc_desc":esp[6],
+            }
+            account_json.append(esp_dict)
+
+        conn.commit()
+
+        cursor.execute("""
+
+            SELECT medicos.*
+                FROM medicos
+                JOIN accounts_medicos ON medicos.med_ID = accounts_medicos.med_ID
+                WHERE accounts_medicos.account_ID = ?;
+
+        """, (account_ID))
+        
+        listaMedicos = cursor.fetchall()
+
+        listaMedicos_json = []
+        for esp in listaMedicos:
+            esp_dict = {
+                "med_ID": esp[0],
+                "med_nombre":esp[1],
+                "med_apellido":esp[2],
+                "esp_ID":esp[3],
+            }
+            listaMedicos_json.append(esp_dict)
+
+        cursor.close()
+        conn.close()
+    
+        return jsonify({'message':'Validado', 'account':account_json, 'listaMedicos':listaMedicos_json}), 200
+    
+    except Exception as e:
+
+        print(f'Error al obtener la data de la cuenta: {e}')
+        return jsonify({'message':'Error en la BD'}), 400
+
+@app.route('/updateUser', methods=['POST'])
+@jwt_required()
+def updateUser():
+
+    try:
+
+        account_ID = request.json['account_ID']
+
+        account_email = request.json['account_email']
+        account_status = request.json['account_status']
+        rol_ID = request.json['rol_ID']
+
+        per_porc_desc = request.json['per_porc_desc']
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        cursor.execute("UPDATE accounts SET account_email = ?, account_status = ?, rol_ID = ? WHERE account_ID = ? ",(account_email, account_status, rol_ID, account_ID))
+        conn.commit()
+
+        cursor.execute("UPDATE permisos_account SET per_porc_desc = ? WHERE account_ID = ? ",(per_porc_desc, account_ID))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+    
+        return jsonify({'message':'Validado'}), 200
+    
+    except Exception as e:
+
+        print(f'Error al asociar account con medico: {e}')
+        return jsonify({'message':'Error al asociar account con medico'}), 400
+    
 
 if __name__ == "__main__":
     app.run(debug = True)
