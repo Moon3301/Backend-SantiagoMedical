@@ -12,6 +12,18 @@ import random
 import string
 import calendar
 
+import xlwings as xw
+from openpyxl import load_workbook
+from exchangelib import Credentials, Account, Message, Mailbox, FileAttachment
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from renameFile import changeNameFile
+
 requests.packages.urllib3.disable_warnings()
 app = Flask(__name__)
 
@@ -31,6 +43,479 @@ jwt = JWTManager(app)
 @app.route("/")
 def hello_world():
     return "<p>Hello, World! fuck</p>"
+
+@app.route('/start_scrapping',methods=["POST"])
+def start_bot_selenium_4():
+    
+    print("Iniciando scrapping ...")
+
+    # Se obtiene el ID del presupuesto a ingresar
+    dataView = request.json["pre_id"]
+
+    print(f'dataView: {dataView}')
+
+    # Se define la url del paciente a obtener
+    url = 'http://localhost:3000/presupuesto-paciente'
+
+    # Se define la variable myobj y se le asigna el ID del presupuesto
+    myobj = {"pre_id":dataView}
+
+    # Se realiza la solicitud a la api 
+    x = requests.post(url,json=myobj, verify=False)
+
+    # Se obtiene el registro en formato de texto
+    y = json.loads(x.text)
+    print(f'Obteniendo registro de presupuesto paciente: {y}')
+
+    # Se define la url del presupuesto a obtener
+    urlP = 'http://localhost:3000/presupuesto'
+
+    # Se realiza la solicitud a la api con el paramtro myobj
+    xP = requests.post(urlP,json=myobj, verify=False)
+
+    # Se obtiene el registro en formato de texto
+    yP = json.loads(xP.text)
+    print(f'Obteniendo registro de presupuesto: {yP}')
+    # Se obtiene el correo de la lista de presupuesto
+    #correo = yP[0]["pre_email"]
+
+    #prefs = {
+    #    "download.default_directory": "C:\\Apache24\\htdocs\\santiagomedical\\static\\files\\" + str(dataView)
+    #}
+
+    # Define la configuracion para la isntancia del navegador: Desactiva el visor PDF (para descargar automaticamente en lugar de abrirse en el navegador)
+    profile = {"plugins.always_open_pdf_externally": True, # Disable Chrome's PDF Viewer
+                "download.default_directory": "C:\\Apache24\\htdocs\\santiagomedical\\static\\files\\" + str(dataView) , "download.extensions_to_open": "applications/pdf"}
+    
+    print("Cargando navegador")
+
+    # Opciones del navegador
+    chrome_options = Options()
+    chrome_options.add_experimental_option("prefs", profile)
+    #chrome_options.add_argument('--headless') <== Se habilita esta opcion para no tener una intefaz de scrapping, pero la accion se ejecuta de igual forma.
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--start-maximized')
+
+    # Crea la instancia de Chrome con opciones y servicio
+    try:
+        browser = webdriver.Chrome(options=chrome_options)
+        print('Instancia de Chrome creada exitosamente')
+    except Exception as e:
+        print(f'Error al crear la instancia de Chrome: {e}')
+
+    # Registra un mensaje antes de acceder a la web
+    print('Accediendo a la web medilink ...')
+
+    # Intenta acceder a la web
+    try:
+        browser.get('http://santiagomedical.new.softwaremedilink.com/sessions/login')
+        print('Acceso a la web exitoso')
+    except Exception as e:
+        print(f'Error al acceder a la web: {e}')
+
+    # Se obtienen los inputs de usuario y contrasena
+    eUser = browser.find_element(By.XPATH,'//*[@id="login-form"]/div/div[1]/input')
+    ePassword = browser.find_element(By.XPATH,'//*[@id="login-form"]/div/div[2]/input')
+
+    # Se obtiene el boton para iniciar sesion
+    eButton = browser.find_element(By.XPATH,'//*[@id="login-form"]/div/input')
+
+    # Se insertan las credenciales de acceso en los inputs
+    eUser.send_keys('mvalenzuela')
+    ePassword.send_keys('mvalenzuela')
+
+    time.sleep(1)
+    # Presionar el boton iniciar sesion con las credenciales de acceso
+    eButton.click()
+    time.sleep(1)
+
+    # Se define la variable b y se le asigna la variable de la intancia del navegador
+    b = browser
+
+    # Se elimina el directorio definido en la ruta, ignorando cualquier error ocurrido durante la eliminacion.
+    print("Eliminando directorio definido en la ruta ./static/files/'+str(dataView)") 
+    shutil.rmtree('./static/files/'+str(dataView), ignore_errors=True)
+
+    print("asignando directorio")
+    directory = str(dataView)
+    parent_dir = './static/files/'
+    pathFolder = os.path.join(parent_dir, directory)
+    os.mkdir(pathFolder)
+
+    print("Realizando screenshoot y guardando en ruta: ./static/img/%s.png")
+    b.save_screenshot('./static/img/%s.png' % dataView)
+
+    try:
+        print("Buscando paciente ...")
+        searchPaciente = b.find_element(By.XPATH,'//*[@id="buscador-header"]')
+
+        print("Obteniendo rut del paciente ...")
+
+        if "presupuestoPaciente" in y and len(y["presupuestoPaciente"]) > 0:
+            searchRut = y["presupuestoPaciente"][0]["prepa_rut"][:-2]
+            print("Rut truncado:", searchRut)
+        else:
+            print("Error: 'presupuestoPaciente' está vacío o no es una lista.")
+
+        searchPaciente.send_keys(searchRut)
+        print("Ingresando rut en input del buscador ...")
+
+        time.sleep(4)
+        print("Sacando Screenshot de pantalla")
+        b.save_screenshot('./static/img/%s.png' % dataView)
+
+        largoPacientes = b.execute_script("return document.querySelectorAll('body > div.navbar- > div > div > table > tbody > tr > td:nth-child(2) > div > ul > li').length")
+        if largoPacientes > 2:
+            time.sleep(3)
+            b.find_element(By.XPATH,'/html/body/div[13]/div/div/table/tbody/tr/td[2]/div/ul/li[1]/a').click()
+            b.save_screenshot('./static/img/%s.png' % dataView)
+        else:
+            time.sleep(3)
+            b.get('https://santiagomedical.new.softwaremedilink.com/clientes')
+            b.save_screenshot('./static/img/%s.png' % dataView)
+            time.sleep(2)
+            b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[1]/div[1]/div/div[1]/a').click()
+            b.save_screenshot('./static/img/%s.png' % dataView)
+            b.execute_script("document.querySelector('#nombre').id = 'apellido'")
+            b.find_element(By.XPATH,'//*[@id="apellido"]').send_keys(y["presupuestoPaciente"][0]["prepa_nombre"])
+            b.find_element(By.XPATH,'//*[@id="nombre"]').send_keys(y["presupuestoPaciente"][0]["prepa_apellido"])
+            b.find_element(By.XPATH,'//*[@id="rut"]').send_keys(y["presupuestoPaciente"][0]["prepa_rut"])
+            
+            elemento_email = b.find_element(By.XPATH,'//*[@id="email-form"]')
+
+            # Borrar el contenido previo
+            elemento_email.clear()
+
+            # Obtener el nuevo email_cargado (como en tu código anterior)
+            email_cargado = y["presupuestoPaciente"][0]["prepa_email"]
+            if len(email_cargado) == 0:
+                email_cargado = "email@sanatorio.com"
+
+            # Enviar el nuevo contenido
+            elemento_email.send_keys(email_cargado)
+            
+            b.execute_script('document.querySelector("#sexo").value = "{}"'.format(y["presupuestoPaciente"][0]["prepa_sexo"]))
+            b.save_screenshot('./static/img/%s.png' % dataView)
+            b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[1]/div/form/div[11]/div/input').send_keys(y["presupuestoPaciente"][0]["prepa_direccion"])
+            ciudad_input = b.find_element(By.NAME,'ciudad')
+            ciudad_input.send_keys("Ciudad Ejemplo")
+            comuna_input = b.find_element(By.NAME,'comuna')
+            comuna_input.send_keys("Comuna Ejemplo")
+            #b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[1]/div/form/div[13]/div/div/input').send_keys(y[0]["prepa_celular"])
+            telefono_input = b.find_element(By.ID,'celular')
+            telefono_input.send_keys(y["presupuestoPaciente"][0]["prepa_celular"])
+
+            # b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[1]/div/form/div[16]/div/textarea').send_keys(y[0]["prepa_observacion"])
+            b.find_element(By.XPATH,'//*[@id="siguiente"]').click()
+            b.save_screenshot('./static/img/%s.png' % dataView)
+            b.get('https://santiagomedical.new.softwaremedilink.com/')
+            b.save_screenshot('./static/img/%s.png' % dataView)
+            searchPaciente = b.find_element(By.XPATH,'//*[@id="buscador-header"]')
+            #searchPaciente.send_keys(y[0]["prepa_rut"])
+            searchPaciente.send_keys(searchRut)
+            time.sleep(4)
+            #b.find_element(By.XPATH,'//*[@id="client-sidebar"]/div[1]/a[1]').click()
+            b.find_element(By.XPATH,'/html/body/div[13]/div/div/table/tbody/tr/td[2]/div/ul/li[1]/a').click()
+            b.save_screenshot('./static/img/%s.png' % dataView)
+        b.find_element(By.XPATH,'//*[@id="section_content"]/div[2]/div[1]/div[1]/div/div/div[3]/a').click()
+        b.find_element(By.XPATH,'//*[@id="section_content"]/div[2]/div[1]/div[1]/div/div/div[3]/ul/li[9]/a').click()
+        
+        urlMedico = 'http://localhost:3000/presupuesto-medico'
+        xMed = requests.post(urlMedico,json=myobj, verify=False)
+        yMed = json.loads(xMed.text)
+
+        atencion = yMed["presupuestoMedico"][0]["premed_valor"]
+        medico = 69
+        findAtencion = b.find_element(By.XPATH,'//*[@id="nombre-atencion"]')
+        findAtencion.send_keys(atencion)
+        b.execute_script("document.querySelector('#nuevo-inmediato > div.modal-body > select').value = {}".format(medico))
+        b.find_element(By.XPATH,'//*[@id="nuevo-inmediato"]/div[3]/a[1]').click()
+        b.find_element(By.XPATH,'//*[@id="section_content"]/div[1]/div[1]/a[2]').click()
+        b.find_element(By.XPATH,'//*[@id="client-sidebar"]/div[6]/div[1]/a').click()
+        datosTratamiento = b.execute_script(open('./validaTratamiento.js').read())
+        datosSplit = datosTratamiento.split()
+        secitionAtenciones = b.execute_script(open('./sectionAtenciones.js').read())
+        print(secitionAtenciones)
+        if secitionAtenciones == 'PRÓXIMA ATENCIÓN':
+            b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[6]/div[1]/div[2]/ul/li[2]').click() 
+        else:
+            if datosSplit[0] == 'Procedimiento':    
+                print(b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[6]/div[1]/div[2]/ul/li[2]/div[2]/table/tbody/tr[1]/td/div').text.strip().split()[0])            
+                if b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[6]/div[1]/div[2]/ul/li[2]/div[2]/table/tbody/tr[1]/td/div').text.strip().split()[0] == 'Procedimiento':
+                    b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[6]/div[1]/div[2]/ul/li[3]').click()     
+                else:
+                    b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[6]/div[1]/div[2]/ul/li[2]').click()     
+            elif datosSplit[0] == 'Consulta':      
+                b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[6]/div[1]/div[2]/ul/li[2]').click() 
+            else:
+                b.find_element(By.XPATH,'/html/body/table[2]/tbody/tr/td/div[3]/div[6]/div[1]/div[2]/ul/li[1]').click()
+       
+        b.find_element(By.XPATH,'//*[@id="display_consulta"]/div/div[14]/div/a').click()
+
+        print("Obteniendo prestaciones ...")
+
+        print("Obteniendo Cirugias ...")
+        urlCirugias = 'http://localhost:3000/lista-presupuesto-cirugia'
+        xCir = requests.post(urlCirugias,json=myobj, verify=False)
+        yCir = json.loads(xCir.text)
+        yCir = yCir["presupuestoCirugias"]
+        print(f"Cirugias obtenidas: {yCir}")
+
+        print("Obteniendo Vaser ...")
+        urlVaser = 'http://localhost:3000/lista-presupuesto-vaser'
+        xVas = requests.post(urlVaser,json=myobj, verify=False)
+        yVase = json.loads(xVas.text)
+        yVase = yVase["listaVaser"]
+        print(f"Vaser obtenido: {yVase}")
+
+        print("Obteniendo Anestesia ...")
+        urlAnestesia = 'http://localhost:3000/lista-presupuesto-anestesias'
+        xAne = requests.post(urlAnestesia,json=myobj, verify=False)
+        yAne = json.loads(xAne.text)
+        yAne = yAne["presupuestoAnestesias"]
+        print(f"Anestesia obtenida: {yAne}")
+
+        print("Obteniendo Recuperacion ...")
+        urlRecuperacion = 'http://localhost:3000/presupuesto-recuperacion'
+        xRec = requests.post(urlRecuperacion,json=myobj, verify=False)
+        yRec = json.loads(xRec.text)
+        yRec = yRec["presupuestoRecuperacion"]
+        print(f"Recuperacion obtenida: {yRec}")
+
+        print(f"Sacando print de pantalla...")
+        b.save_screenshot('./static/img/%s.png' % dataView)
+
+        print("Cargando prestaciones ...")
+        for i in yCir:
+            if int(i["precir_flag"]) == 1:
+                print("Cargando Cirugias")
+                cargaPrestaciones(b,i["precir_nombre"],i["precir_precio"],i["precir_horas"],dataView)    
+            else:
+                cargaPrestaciones(b,i["precir_nombre"],i["precir_precio"],i["precir_horas"],dataView)    
+                    
+        for i in yAne:
+            cargaPrestaciones(b,i["preane_nombre"],i["preane_precio"],i["preane_horas"],dataView)
+
+        for i in yRec:
+            cargaPrestaciones(b,i["prerec_nombre"],i["prerec_precio"],i["prerec_horas"],dataView)
+        
+        for i in yVase:
+           cargaPrestaciones(b,i["preva_nombre"],i["preva_precio"],i["preva_horas"],dataView)
+            
+        b.save_screenshot('./static/img/%s.png' % dataView)
+        time.sleep(3)
+        b.find_element(By.XPATH,'//*[@id="cargar-prestaciones-success"]').click()
+        time.sleep(3)
+        datosM = b.execute_script(open('./index.js').read())
+        descuentoFlag = 20
+        arra = []        
+        for i,idx in enumerate(yCir):
+            yCir[i].update({'flag':0})
+        for i in yCir:
+            # if i["precir_precio"] != 0:
+            for j in datosM:
+                str2 = j["nombre"].replace(u'Más Información','')
+                str3 = str2.replace(u'Eliminar','')
+                str4 = str3.replace(u'-','').strip()
+                strD = i["precir_nombre"].replace(u'-','').strip()            
+                #print(int(j["descuento"]),int(i["precir_descuento"]))
+                print(str4,strD,str4 == strD)
+                
+                if str4 == '210409300 INSUMOS TUNEL CARPEANO':
+                    if str4 == strD and int(descuentoFlag) != int(i['precir_descuento']):
+                        descuentoFlag = i['precir_descuento']
+                        b.save_screenshot('./static/img/%s.png' % dataView)
+                        if int(i["precir_flag"]) == 1:                
+                            #precioZ = int(i["cir_precio"]) * int(i["precir_horas"])
+                            #precioZ = int(i["precir_precio"]) * int(i["precir_horas"])
+                            precioZ = int(i["precir_precio"])
+                        else:
+                            #precioZ = int(i["cir_precio_insumo"]) * int(i["precir_horas"])
+                            #precioZ = int(i["precir_precio"]) * int(i["precir_horas"])
+                            precioZ = int(i["precir_precio"])
+                        print('CODIGO',j["codigo"],'PRECIOS:',int(precioZ),int(j["precio"])) 
+                        if(int(precioZ) != 0):
+                            if int(j["precio"]) != int(precioZ):
+                                
+                                time.sleep(1)
+                                b.execute_script('togglePrecio("{}")'.format(j["codigo"]))
+                                time.sleep(1)
+                                b.execute_script('document.querySelector("#precio_field_accion_{}").value = "{}"'.format(j["codigo"],int(precioZ)))
+                                b.execute_script('updatePrecioDetalle("precio_field_accion_{}","{}","isIntegerZero");'.format(j["codigo"],j["codigo"]))
+                            if int(j["descuento"]) != int(i["precir_descuento"]):
+                            # if int(i["precir_descuento"]) != 0:
+                                time.sleep(1)
+                                b.execute_script('jQuery("#porcentaje_edit_accion_{}").toggle();'.format(j["codigo"]))
+                                time.sleep(1)
+                                print(len(str(i["precir_descuento"])))
+                                if len(str(i["precir_descuento"])) <= 1:
+                                    b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.0{}"'.format(j["codigo"],int(i["precir_descuento"])))
+                                else:
+                                    b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.{}"'.format(j["codigo"],int(i["precir_descuento"])))
+                                # b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.{}"'.format(j["codigo"],int(i["precir_descuento"])))
+                                
+                                b.execute_script('updatePorcentajeDetallePresupuesto("porcentaje_field_accion_{}","{}");'.format(j["codigo"],j["codigo"]))
+                else:
+                    if str4 == strD:
+                        descuentoFlag = i['precir_descuento']
+                        b.save_screenshot('./static/img/%s.png' % dataView)
+                        if int(i["precir_flag"]) == 1:                
+                            #precioZ = int(i["cir_precio"]) * int(i["precir_horas"])
+                            #precioZ = int(i["precir_precio"]) * int(i["precir_horas"])
+                            precioZ = int(i["precir_precio"])
+                        else:
+                            #precioZ = int(i["cir_precio_insumo"]) * int(i["precir_horas"])
+                            #precioZ = int(i["precir_precio"]) * int(i["precir_horas"])
+                            precioZ = int(i["precir_precio"])
+                        print('CODIGO',j["codigo"],'PRECIOS:',int(precioZ),int(j["precio"])) 
+                        if(int(precioZ) != 0):
+                            if int(j["precio"]) != int(precioZ):
+                                
+                                time.sleep(1)
+                                b.execute_script('togglePrecio("{}")'.format(j["codigo"]))
+                                time.sleep(1)
+                                b.execute_script('document.querySelector("#precio_field_accion_{}").value = "{}"'.format(j["codigo"],int(precioZ)))
+                                b.execute_script('updatePrecioDetalle("precio_field_accion_{}","{}","isIntegerZero");'.format(j["codigo"],j["codigo"]))
+                            if int(j["descuento"]) != int(i["precir_descuento"]):
+                            # if int(i["precir_descuento"]) != 0:
+                                time.sleep(1)
+                                b.execute_script('jQuery("#porcentaje_edit_accion_{}").toggle();'.format(j["codigo"]))
+                                time.sleep(1)
+                                print(len(str(i["precir_descuento"])))
+                                if len(str(i["precir_descuento"])) <= 1:
+                                    b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.0{}"'.format(j["codigo"],int(i["precir_descuento"])))
+                                else:
+                                    b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.{}"'.format(j["codigo"],int(i["precir_descuento"])))
+                                # b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.{}"'.format(j["codigo"],int(i["precir_descuento"])))
+                                
+                                b.execute_script('updatePorcentajeDetallePresupuesto("porcentaje_field_accion_{}","{}");'.format(j["codigo"],j["codigo"]))
+        for i in yAne:
+            for j in datosM:
+                str2 = j["nombre"].replace(u'Más Información','')
+                str3 = str2.replace(u'Eliminar','')
+                str4 = str3.replace(u'-','').strip()
+                strD = i["preane_nombre"].replace(u'-','').strip()
+                if str4 == strD:
+                    #precioF = int(i["ane_precio"]) * int(i["preane_horas"])
+                    precioF = int(i["preane_precio"])
+                    b.save_screenshot('./static/img/%s.png' % dataView)
+                    if(int(precioF) != 0):
+                        if int(j["precio"]) != int(precioF):
+                            time.sleep(1)
+                            b.execute_script('togglePrecio("{}")'.format(j["codigo"]))
+                            time.sleep(1)
+                            b.execute_script('document.querySelector("#precio_field_accion_{}").value = "{}"'.format(j["codigo"],int(precioF)))
+                            b.execute_script('updatePrecioDetalle("precio_field_accion_{}","{}","isIntegerZero");'.format(j["codigo"],j["codigo"]))
+                        if int(j["descuento"]) != int(i["preane_descuento"]):
+                            time.sleep(1)
+                            b.execute_script('jQuery("#porcentaje_edit_accion_{}").toggle();'.format(j["codigo"]))
+                            time.sleep(1)
+                            b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.{}"'.format(j["codigo"],int(i["preane_descuento"])))
+                            b.execute_script('updatePorcentajeDetallePresupuesto("porcentaje_field_accion_{}","{}");'.format(j["codigo"],j["codigo"]))
+        for i in yVase:
+            for j in datosM:
+                str2 = j["nombre"].replace(u'Más Información','')
+                str3 = str2.replace(u'Eliminar','')
+                str4 = str3.replace(u'-','').strip()
+                strD = i["preva_nombre"].replace(u'-','').strip()
+                if str4 == strD:
+                    #precioF = int(i["ane_precio"]) * int(i["preane_horas"])
+                    precioF = int(i["preva_precio"])
+                    b.save_screenshot('./static/img/%s.png' % dataView)
+                    if(int(precioF) != 0):
+                        if int(j["precio"]) != int(precioF):
+                            time.sleep(1)
+                            b.execute_script('togglePrecio("{}")'.format(j["codigo"]))
+                            time.sleep(1)
+                            b.execute_script('document.querySelector("#precio_field_accion_{}").value = "{}"'.format(j["codigo"],int(precioF)))
+                            b.execute_script('updatePrecioDetalle("precio_field_accion_{}","{}","isIntegerZero");'.format(j["codigo"],j["codigo"]))
+                        if int(j["descuento"]) != int(i["preva_descuento"]):
+                            time.sleep(1)
+                            b.execute_script('jQuery("#porcentaje_edit_accion_{}").toggle();'.format(j["codigo"]))
+                            time.sleep(1)
+                            b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.{}"'.format(j["codigo"],int(i["preva_descuento"])))
+                            b.execute_script('updatePorcentajeDetallePresupuesto("porcentaje_field_accion_{}","{}");'.format(j["codigo"],j["codigo"]))
+        for i in yRec:
+            # if i["prerec_precio"] != 0:
+            for j in datosM:
+                b.save_screenshot('./static/img/%s.png' % dataView)
+                str2 = j["nombre"].replace(u'Más Información','')
+                str3 = str2.replace(u'Eliminar','')
+                str4 = str3.replace(u'-','').strip()
+                strD = i["prerec_nombre"].replace(u'-','').strip()
+                if str4 == strD:
+                    precioX = int(i["rec_precio"]) * int(i["prerec_horas"])
+                    if(int(precioX) != 0):
+                        if int(j["precio"]) != int(precioX):
+                            time.sleep(1)
+                            b.execute_script('togglePrecio("{}")'.format(j["codigo"]))
+                            time.sleep(1)
+                            b.execute_script('document.querySelector("#precio_field_accion_{}").value = "{}"'.format(j["codigo"],int(precioX)))
+                            b.execute_script('updatePrecioDetalle("precio_field_accion_{}","{}","isIntegerZero");'.format(j["codigo"],j["codigo"]))
+                        if int(j["descuento"]) != int(i["prerec_descuento"]):
+                            time.sleep(1)
+                            b.execute_script('jQuery("#porcentaje_edit_accion_{}").toggle();'.format(j["codigo"]))
+                            time.sleep(1)
+                            b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.{}"'.format(j["codigo"],int(i["prerec_descuento"])))
+                            b.execute_script('updatePorcentajeDetallePresupuesto("porcentaje_field_accion_{}","{}");'.format(j["codigo"],j["codigo"]))
+        time.sleep(5)
+        b.save_screenshot('./static/img/%s.png' % dataView)
+        b.find_element(By.XPATH,'//*[@id="section_content"]/div[1]/div/div[2]/ul/li[2]/a').click()
+        b.find_element(By.XPATH,'//*[@id="section_content"]/div[1]/div/div[2]/ul/li[2]/ul/li[1]/a').click()
+        b.save_screenshot('./static/img/%s.png' % dataView)
+        time.sleep(10)
+        b.save_screenshot('./static/img/%s.png' % dataView)
+        f = changeNameFile(dataView)
+
+        print('https://stgomedical.acbingenieria.cl%s' % str(f))
+        S = lambda X: b.execute_script('return document.body.parentNode.scroll'+X)
+        b.set_window_size(S('Width'),S('Height'))                                                                                                            
+        b.find_element(By.TAG_NAME,'body').screenshot('./static/img/%s.png' % dataView)
+        # el.save_screenshot('%s.png' % dataView)
+        print('CERRANDO BROWSER %s' % dataView)
+        b.close()
+        # file = find('doc.pdf','./static')   
+        # lenFile = len(file)
+        # if lenFile > 0:
+        #     os.remove('./static/doc.pdf')
+        # b.find_element(By.XPATH,'//*[@id="section_content"]/div[1]/div/div[2]/ul/li[2]/a').click()
+        # b.find_element(By.XPATH,'//*[@id="section_content"]/div[1]/div/div[2]/ul/li[2]/ul/li[1]/a').click()
+        # paths = WebDriverWait(b, 120, 1).until(every_downloads_chrome)   
+        # b.close()
+        # if paths != '':
+        #     p = paths[0].replace('file:///','') 
+        #     # print(paths)
+        #     f = changeNameFile()
+        #     filePath= r'C:/Apache24/htdocs/santiagomedical/'+str(f)+''
+        #     print(f)
+        #     print(p)
+
+        url = 'http://localhost:3000/update_file'
+        myobj = {"pre_id":dataView,"filename":str(f)}    
+        x = requests.post(url,json=myobj, verify=False)
+
+        #     #envia_correo(filePath,correo)    
+        return 'OK'
+    except Exception as e:
+        print(e)
+        b.save_screenshot('Error%s.png' % dataView) 
+        url = 'http://localhost:3000/update_presupuestoF'   
+        requests.post(url,json=myobj, verify=False)
+        b.close()
+
+def cargaPrestaciones(b,prestacion,precio,horas,dataView):
+    if (int(precio) != 0):
+        if(int(horas) != 0):
+            b.save_screenshot('./static/img/%s.png' % dataView)
+            time.sleep(2)
+            b.find_element(By.XPATH,'//*[@id="query"]').send_keys(prestacion)
+            time.sleep(1)
+            if prestacion == 'Honorarios Medicos':
+                b.find_element(By.XPATH,'//*[@id="invoice_item_manager_buscar"]/div[1]/ul/li[3]/a').click()
+            else:
+                b.find_element(By.XPATH,'//*[@id="invoice_item_manager_buscar"]/div[1]/ul/li[1]/a').click()
+            time.sleep(1)
+            b.find_element(By.XPATH,'//*[@id="agregar_buscar"]').click()
 
 @app.route('/loginToken', methods=['POST'])
 def loginToken():
@@ -718,7 +1203,7 @@ def agregar_permisosUsuario():
         print(f'ID obtenido desde el front:  {account_ID}')
         print(f'Porcentaje de descuento obtenido desde el front:  {per_porc_desc}')
 
-        descuento = int(per_porc_desc) * 10
+        descuento = int(per_porc_desc)
         
         print(f'Porcentaje de desc a insertar en la BD: {descuento}')
 

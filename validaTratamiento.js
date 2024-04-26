@@ -1,0 +1,1 @@
+return document.querySelector('body > table:nth-child(20) > tbody > tr > td > div.main > div.module-content.history-module-container > div.history-module > div.history.module-sub-content > ul > li:nth-child(1) > div.history-milestone-container > table > tbody > tr:nth-child(1) > td > div').innerText.trim()
