@@ -1,4 +1,4 @@
-from flask import Flask,jsonify,make_response,render_template,request, session, redirect, url_for
+from flask import Flask,jsonify,make_response,render_template,request, send_file, session, redirect, url_for,  send_from_directory
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, set_access_cookies, unset_jwt_cookies
 from flask_jwt_extended import JWTManager
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,7 +11,6 @@ from correoVerificacion import enviar_correo
 import random
 import string
 import calendar
-
 import xlwings as xw
 from openpyxl import load_workbook
 from exchangelib import Credentials, Account, Message, Mailbox, FileAttachment
@@ -23,6 +22,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from renameFile import changeNameFile
+from flask import send_from_directory
 
 requests.packages.urllib3.disable_warnings()
 app = Flask(__name__)
@@ -39,6 +39,8 @@ app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)  # Duración del to
 app.secret_key = 'admin1234'
 
 jwt = JWTManager(app)
+
+dir_download = "C:\\Users\\Administrador\\Desktop\\Backend-SantiagoMedical\\static\\files\\"
 
 @app.route("/")
 def hello_world():
@@ -85,8 +87,9 @@ def start_bot_selenium_4():
 
     # Define la configuracion para la isntancia del navegador: Desactiva el visor PDF (para descargar automaticamente en lugar de abrirse en el navegador)
     profile = {"plugins.always_open_pdf_externally": True, # Disable Chrome's PDF Viewer
-                "download.default_directory": "C:\\Apache24\\htdocs\\santiagomedical\\static\\files\\" + str(dataView) , "download.extensions_to_open": "applications/pdf"}
-    
+                "download.default_directory": dir_download + str(dataView) , "download.extensions_to_open": "applications/pdf"}
+                                                
+    #C:\\Users\\Administrador\\Desktop\\Backend-SantiagoMedical\\static\\files\\" + str(dataView)
     print("Cargando navegador")
 
     # Opciones del navegador
@@ -465,6 +468,7 @@ def start_bot_selenium_4():
         b.save_screenshot('./static/img/%s.png' % dataView)
         time.sleep(10)
         b.save_screenshot('./static/img/%s.png' % dataView)
+
         f = changeNameFile(dataView)
 
         print('https://stgomedical.acbingenieria.cl%s' % str(f))
@@ -516,6 +520,43 @@ def cargaPrestaciones(b,prestacion,precio,horas,dataView):
                 b.find_element(By.XPATH,'//*[@id="invoice_item_manager_buscar"]/div[1]/ul/li[1]/a').click()
             time.sleep(1)
             b.find_element(By.XPATH,'//*[@id="agregar_buscar"]').click()
+
+@app.route('/get_pdf', methods=['POST'])  # Cambiar a POST ya que se espera un JSON en el cuerpo de la solicitud
+def get_pdf():
+    
+    data = request.json
+
+    if 'pre_file' not in data:
+        return jsonify({'error': 'Missing file name'}), 400
+    
+    pre_file = data['pre_file']  # Ruta completa desde la solicitud JSON
+
+    file_path, file_name = os.path.split(pre_file)  # Devuelve el directorio y el nombre del archivo
+    # Obtener el nombre del archivo desde la solicitud JSON
+
+    data = request.json
+    if 'pre_file' not in data:
+        return jsonify({'error': 'Missing file name'}), 400
+    
+    file_path = '.'+file_path+'/'
+
+    # Definir la ruta del archivo usando os.path.join
+    file_path_ = os.path.join(file_path)
+    file_name_ = os.path.join(file_name)  # Ajustar ruta según tu configuración
+    
+    print('file_path_: '+file_path_)
+    print('file_name_: '+file_name_)
+
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    # Devolver el archivo PDF
+    try:
+        print("llegando ahi ...")
+        return send_from_directory(file_path_, file_name_)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/loginToken', methods=['POST'])
 def loginToken():
@@ -1432,6 +1473,27 @@ def updateUser():
         print(f'Error al asociar account con medico: {e}')
         return jsonify({'message':'Error al asociar account con medico'}), 400
     
+@app.route('/EnviarPRE',methods=["POST"])
+def enviarPre():
+
+    data = request.json
+    
+    if 'email' not in data or 'filename' not in data:
+        return jsonify({'error': 'Missing required parameters'}), 400
+    
+    email = data['email']  # Correo del destinatario
+    filename = data['filename']  # Ruta del archivo recibido del frontend
+    
+    print('email: '+email)
+    print('filename: '+filename)
+    # Verificar que el archivo existe antes de intentar adjuntarlo
+    if not os.path.exists('.'+filename):
+        return jsonify({'error': 'File not found'}), 404
+
+    enviar_correo(email,filename)
+
+    
+    return 'Correo Enviado'
 
 if __name__ == "__main__":
     app.run(debug = True)
