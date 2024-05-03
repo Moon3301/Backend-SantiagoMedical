@@ -23,11 +23,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from renameFile import changeNameFile
 from flask import send_from_directory
+from flask_socketio import SocketIO, emit
 
 requests.packages.urllib3.disable_warnings()
 app = Flask(__name__)
 
 cors = CORS(app, resources={r"/*": {"origins": "*"}})
+
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 locale.setlocale(locale.LC_ALL, "es_ES.UTF-8")
 dt = datetime.now()
@@ -42,6 +45,20 @@ jwt = JWTManager(app)
 
 dir_download = "C:\\Users\\Administrador\\Desktop\\Backend-SantiagoMedical\\static\\files\\"
 
+@socketio.on('connect')
+def test_connect():
+    print('Client connected to flask')
+
+@socketio.on('disconnect')
+def test_disconnect():
+    print('Client disconnected to flask')
+
+@socketio.on('budget_changed')
+def handle_budget_changed(data):
+    print('Cambio de presupuesto recibido:', data)
+    # Aquí puedes actualizar tus componentes con los nuevos datos
+    socketio.emit('budget_changed', data)
+
 @app.route("/")
 def hello_world():
     return "<p>Hello, World! fuck</p>"
@@ -49,6 +66,7 @@ def hello_world():
 @app.route('/start_scrapping',methods=["POST"])
 def start_bot_selenium_4():
     
+
     print("Iniciando scrapping ...")
 
     # Se obtiene el ID del presupuesto a ingresar
@@ -91,7 +109,7 @@ def start_bot_selenium_4():
                                                 
     #C:\\Users\\Administrador\\Desktop\\Backend-SantiagoMedical\\static\\files\\" + str(dataView)
     print("Cargando navegador")
-
+    
     # Opciones del navegador
     chrome_options = Options()
     chrome_options.add_experimental_option("prefs", profile)
@@ -439,7 +457,7 @@ def start_bot_selenium_4():
                             b.execute_script('document.querySelector("#porcentaje_field_accion_{}").value = "0.{}"'.format(j["codigo"],int(i["preva_descuento"])))
                             b.execute_script('updatePorcentajeDetallePresupuesto("porcentaje_field_accion_{}","{}");'.format(j["codigo"],j["codigo"]))
         for i in yRec:
-            # if i["prerec_precio"] != 0:
+            
             for j in datosM:
                 b.save_screenshot('./static/img/%s.png' % dataView)
                 str2 = j["nombre"].replace(u'Más Información','')
@@ -475,32 +493,27 @@ def start_bot_selenium_4():
         S = lambda X: b.execute_script('return document.body.parentNode.scroll'+X)
         b.set_window_size(S('Width'),S('Height'))                                                                                                            
         b.find_element(By.TAG_NAME,'body').screenshot('./static/img/%s.png' % dataView)
-        # el.save_screenshot('%s.png' % dataView)
+        
         print('CERRANDO BROWSER %s' % dataView)
         b.close()
-        # file = find('doc.pdf','./static')   
-        # lenFile = len(file)
-        # if lenFile > 0:
-        #     os.remove('./static/doc.pdf')
-        # b.find_element(By.XPATH,'//*[@id="section_content"]/div[1]/div/div[2]/ul/li[2]/a').click()
-        # b.find_element(By.XPATH,'//*[@id="section_content"]/div[1]/div/div[2]/ul/li[2]/ul/li[1]/a').click()
-        # paths = WebDriverWait(b, 120, 1).until(every_downloads_chrome)   
-        # b.close()
-        # if paths != '':
-        #     p = paths[0].replace('file:///','') 
-        #     # print(paths)
-        #     f = changeNameFile()
-        #     filePath= r'C:/Apache24/htdocs/santiagomedical/'+str(f)+''
-        #     print(f)
-        #     print(p)
 
-        url = 'http://localhost:3000/update_file'
-        myobj = {"pre_id":dataView,"filename":str(f)}    
-        x = requests.post(url,json=myobj, verify=False)
+        #try:
 
-        #     #envia_correo(filePath,correo)    
-        return 'OK'
+        #    url = 'http://localhost:3000/update_file'
+        #    myobj = {"pre_id":dataView,"filename":str(f)}
+        #    x = requests.post(url,json=myobj, verify=False)
+
+        #except Exception as e:
+        #    print('Error al actualizar el estado del presupuesto')
+
+        print("Terminando tarea de robot ...")
+            
+        return jsonify({'message': 'Validado', 'pre_id':dataView,'filename':str(f)})
+    
     except Exception as e:
+
+        socketio.emit('state_bot', 'Error al terminar tarea de robot..')
+
         print(e)
         b.save_screenshot('Error%s.png' % dataView) 
         url = 'http://localhost:3000/update_presupuestoF'   
@@ -593,6 +606,13 @@ def loginToken():
         print('Usuario deshabilitado')
         return jsonify({'message': 'Usuario deshabilitado, porfavor contactese con el administrador.'}),400
     
+    if usuario.account_status == 1:
+
+        print('Usuario Activo')
+        # Mensaje socket
+        
+        socketio.emit('budget_changed', f'Iniciando sesion usuario: {username}, inhabilitando sesiones activas')
+        
     if not usuario or not check_password_hash(usuario.account_password, password):
 
         print("Contraseña almacenada en la base de datos:", usuario.account_password)
@@ -1176,11 +1196,50 @@ def listarEspecialistas():
 
         conn = conectar_bd()
         cursor = conn.cursor()
+        
+        cursor.execute(""" EXEC listado_medicos """)
+
+        #SELECT med_ID, med_nombre, med_apellido, med_estado, esp_nombre FROM medicos
+        #JOIN especialidades ON medicos.esp_ID = especialidades.esp_ID;
+
+        especialistasBD = cursor.fetchall()
+
+        especialistas_json = []
+        for esp in especialistasBD:
+            esp_dict = {
+
+                "med_ID": esp[0],
+                "med_nombre":esp[1],
+                "med_apellido":esp[2],
+                "med_estado":esp[3],
+                "esp_nombre":esp[4],
+                "account_username":esp[5]
+            }
+            especialistas_json.append(esp_dict)
+
+        cursor.close()
+        conn.close()
+    
+        return jsonify({'message':'Validado', 'especialistas':especialistas_json}), 200
+            
+    except Exception as e:
+
+        print(f'Error al obtener registro en la BD: {e}')
+        return jsonify({'message':'Error BD'}), 400
+    
+@app.route('/listar_especialistas_disponibles', methods=['GET'])
+@jwt_required()
+def listarEspecialistasDisponibles():
+
+    try:
+
+        conn = conectar_bd()
+        cursor = conn.cursor()
 
         cursor.execute("""
 
             SELECT med_ID, med_nombre, med_apellido, med_estado, esp_nombre FROM medicos
-            JOIN especialidades ON medicos.esp_ID = especialidades.esp_ID;
+            JOIN especialidades ON medicos.esp_ID = especialidades.esp_ID WHERE med_estado = 1;
                        
         """)
         especialistasBD = cursor.fetchall()
@@ -1326,17 +1385,27 @@ def asociarAccountMedico():
         conn = conectar_bd()
         cursor = conn.cursor()
 
-        cursor.execute("INSERT INTO accounts_medicos (account_ID, med_ID) VALUES (?, ?)",(account_ID, med_ID))
-        conn.commit()
+        cursor.execute("SELECT * FROM medicos WHERE med_ID = ?",(med_ID))
+        medico = cursor.fetchone()
 
-        cursor.execute("UPDATE medicos SET med_estado = ? WHERE med_ID = ?",(0, med_ID))
-        conn.commit()
+        if(medico.med_estado == 1):
 
-        cursor.close()
-        conn.close()
-    
-        return jsonify({'message':'Validado'}), 200
-    
+            cursor.execute("INSERT INTO accounts_medicos (account_ID, med_ID) VALUES (?, ?)",(account_ID, med_ID))
+            conn.commit()
+
+            cursor.execute("UPDATE medicos SET med_estado = ? WHERE med_ID = ?",(0, med_ID))
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+
+            socketio.emit('update_med_disp', 'Se ha asociado un medico a un usuario. Actualizando lista.')
+            return jsonify({'message':'Validado'}), 200
+        
+        else:
+
+            return jsonify({'message':'Medico ya se encuentra asignado a un usuario'}), 400
+        
     except Exception as e:
 
         print(f'Error al asociar account con medico: {e}')
@@ -1364,7 +1433,8 @@ def eliminarAccountMedico():
 
         cursor.close()
         conn.close()
-    
+
+        socketio.emit('update_med_disp', 'Se ha quitado la asignacion de un medico, actualizando lista de medicos')
         return jsonify({'message':'Validado'}), 200
     
     except Exception as e:
@@ -1440,7 +1510,7 @@ def getDataShowUsers():
         print(f'Error al obtener la data de la cuenta: {e}')
         return jsonify({'message':'Error en la BD'}), 400
 
-@app.route('/updateUser', methods=['POST'])
+@app.route('/update-user', methods=['POST'])
 @jwt_required()
 def updateUser():
 
@@ -1449,15 +1519,21 @@ def updateUser():
         account_ID = request.json['account_ID']
 
         account_email = request.json['account_email']
-        account_status = request.json['account_status']
+        account_active = request.json['account_active']
         rol_ID = request.json['rol_ID']
+        
+        if rol_ID == 'Usuario':
+            rol_ID = 1
+                
+        if(rol_ID == 'Administrador'):
+            rol_ID = 2
 
         per_porc_desc = request.json['per_porc_desc']
 
         conn = conectar_bd()
         cursor = conn.cursor()
 
-        cursor.execute("UPDATE accounts SET account_email = ?, account_status = ?, rol_ID = ? WHERE account_ID = ? ",(account_email, account_status, rol_ID, account_ID))
+        cursor.execute("UPDATE accounts SET account_email = ?, account_active = ?, rol_ID = ? WHERE account_ID = ? ",(account_email, account_active, rol_ID, account_ID))
         conn.commit()
 
         cursor.execute("UPDATE permisos_account SET per_porc_desc = ? WHERE account_ID = ? ",(per_porc_desc, account_ID))
@@ -1492,8 +1568,7 @@ def enviarPre():
 
     enviar_correo(email,filename)
 
-    
     return 'Correo Enviado'
 
 if __name__ == "__main__":
-    app.run(debug = True)
+    socketio.run(debug = True)
