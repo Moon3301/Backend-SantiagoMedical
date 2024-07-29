@@ -17,28 +17,3 @@ password = 'zxcdewq123.,**'
 def conectar_bd():
     return pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';UID='+username+';PWD='+password)
 
-"""
-def conectar_bd_test():
-    try:
-        conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';UID='+username+';PWD='+password)
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        row = cursor.fetchone()
-        if row:
-            print("Conexión establecida correctamente.")
-            return conn
-        else:
-            print("No se pudo establecer conexión.")
-            return None
-    except Exception as e:
-        print("Error al conectar:", e)
-        return None
-
-# Ejemplo de uso
-conn = conectar_bd_test()
-
-if conn:
-    # Realizar operaciones con la conexión
-    # ...
-    conn.close()
-"""

@@ -11,76 +11,78 @@ def enviar_correo(destinatarios, filename):
     # Inicia el hilo
     thread.start()
 
+def enviar_correo_verificacion(destinatarios, asunto, mensaje):
+
+    thread = threading.Thread(target=_enviar_correo_verificacion, args=(destinatarios, asunto, mensaje))
+
+    thread.start()
+
 def envioCorreo(e,f):
 
-    email = "katherine.ergas@santiagomedical.cl"
-    # password = "Smedical..534"
-    password = "Smedical.2021"
+    try:
 
-    destinatarios = [e]
-    file = f
-    # Iniciamos los parámetros del script
-    remitente = email
-    
-    asunto = '[PRE] Presupuesto Medico'
-    cuerpo = 'Se adjunta documento presupuesto medico solicitado.'
-    ruta_adjunto = '.'+file
-    nombre_adjunto = 'Presupuesto2024.pdf'
-    #cc = ['katherine.ergas@santiagomedical.cl']
-    # Creamos el objeto mensaje
-    mensaje = MIMEMultipart()
-    
-    # Establecemos los atributos del mensaje
-    mensaje['From'] = remitente
-    mensaje['To'] = ", ".join(destinatarios)
-    mensaje['Subject'] = asunto
-    #mensaje['CC'] = 'katherine.ergas@santiagomedical.cl'
-    print(remitente)
-    # Agregamos el cuerpo del mensaje como objeto MIME de tipo texto
-    mensaje.attach(MIMEText(cuerpo, 'plain'))
-    
-    # Abrimos el archivo que vamos a adjuntar
-    archivo_adjunto = open(ruta_adjunto, 'rb')
-    
-    # Creamos un objeto MIME base
-    adjunto_MIME = MIMEBase('application', 'octet-stream')
-    # Y le cargamos el archivo adjunto
-    adjunto_MIME.set_payload((archivo_adjunto).read())
-    # Codificamos el objeto en BASE64
-    encoders.encode_base64(adjunto_MIME)
-    # Agregamos una cabecera al objeto
-    adjunto_MIME.add_header('Content-Disposition', "attachment; filename= %s" % nombre_adjunto)
-    # Y finalmente lo agregamos al mensaje
-    mensaje.attach(adjunto_MIME)
-    
-    # Creamos la conexión con el servidor
-    sesion_smtp = smtplib.SMTP_SSL('mail.santiagomedical.cl', 465)
-    
-    # Ciframos la conexión
-    # sesion_smtp.starttls()
+        #email = "katherine.ergas@santiagomedical.cl"
+        #password = "Smedical.2021"
 
-    # Iniciamos sesión en el servidor
-    sesion_smtp.login(email,password)
+        email = "presupuestos@santiagomedical.cl"
+        password = "#UIpY77*N1oH"
 
-    # Convertimos el objeto mensaje a texto
-    texto = mensaje.as_string()
+        destinatarios = [e]
+        file = f
+        # Iniciamos los parámetros del script
+        remitente = email
+        
+        asunto = '[PRE] Presupuesto Medico'
+        cuerpo = 'Se adjunta documento presupuesto medico solicitado.'
+        ruta_adjunto = '.'+file
+        nombre_adjunto = 'Presupuesto2024.pdf'
+        #cc = ['katherine.ergas@santiagomedical.cl']
+        # Creamos el objeto mensaje
+        mensaje = MIMEMultipart()
+        
+        # Establecemos los atributos del mensaje
+        mensaje['From'] = remitente
+        mensaje['To'] = ", ".join(destinatarios)
+        mensaje['Subject'] = asunto
 
-    # Enviamos el mensaje
-    sesion_smtp.sendmail(remitente, destinatarios, texto)
-    # return sesion_smtp
-    print(sesion_smtp)
-    # Cerramos la conexión
-    sesion_smtp.quit()
+        #Karen Gálvez <karen.galvez@santiagomedical.cl>
+        mensaje['CC'] = 'karen.galvez@santiagomedical.cl'
+        print(remitente)
+        # Agregamos el cuerpo del mensaje como objeto MIME de tipo texto
+        mensaje.attach(MIMEText(cuerpo, 'plain'))
+        # Abrimos el archivo que vamos a adjuntar
+        archivo_adjunto = open(ruta_adjunto, 'rb')
+        # Creamos un objeto MIME base
+        adjunto_MIME = MIMEBase('application', 'octet-stream')
+        # Y le cargamos el archivo adjunto
+        adjunto_MIME.set_payload((archivo_adjunto).read())
+        # Codificamos el objeto en BASE64
+        encoders.encode_base64(adjunto_MIME)
+        # Agregamos una cabecera al objeto
+        adjunto_MIME.add_header('Content-Disposition', "attachment; filename= %s" % nombre_adjunto)
+        # Y finalmente lo agregamos al mensaje
+        mensaje.attach(adjunto_MIME)
+        # Creamos la conexión con el servidor
+        sesion_smtp = smtplib.SMTP_SSL('mail.santiagomedical.cl', 465)
+        # Iniciamos sesión en el servidor
+        sesion_smtp.login(email,password)
+        # Convertimos el objeto mensaje a texto
+        texto = mensaje.as_string()
+        # Enviamos el mensaje
+        sesion_smtp.sendmail(remitente, destinatarios, texto)
+        # return sesion_smtp
+        print(sesion_smtp)
+        # Cerramos la conexión
+        sesion_smtp.quit()
+    except Exception as e:
+        print("Error al enviar correo")
 
-def _enviar_correo(destinatarios, pdf):
+def _enviar_correo_verificacion(destinatarios, asunto, mensaje):
     # Configura las credenciales del correo electrónico del remitente
     correo_remitente = "app@acdata.cl"
     contraseña = "jtzgdfwnkmgnkpgy"
-
-    asunto = '[PRE] Presupuesto Medico'
-    cuerpo = 'Se adjunta documento presupuesto medico solicitado.'
-    nombre_adjunto = 'Presupuesto2024.pdf'
-    cc = ['katherine.ergas@santiagomedical.cl']
+  
+    #cc = ['katherine.ergas@santiagomedical.cl']
 
     # Crea el objeto del mensaje
     msg = MIMEMultipart()
@@ -90,8 +92,7 @@ def _enviar_correo(destinatarios, pdf):
     #msg['CC'] = 'katherine.ergas@santiagomedical.cl'
 
     # Agrega el mensaje al correo
-    msg.attach(MIMEText(cuerpo, 'plain'))
-
+    msg.attach(MIMEText(mensaje, 'html'))
    
     # Configura el servidor SMTP de Gmail
     servidor_smtp = "smtp.office365.com"
