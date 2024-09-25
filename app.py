@@ -32,11 +32,15 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+#from requests.adapters import Retry
+#from urllib3.util.retry import Retry
+from urllib3.util import Retry
 
 from selenium.common.exceptions import NoSuchElementException
 
 from apscheduler.schedulers.background import BackgroundScheduler
+
+
 
 # test logs
 import logging
@@ -55,7 +59,7 @@ app.logger.addHandler(file_handler)
 
 CORS(app, resources={r"/*": {"origins": "*", "methods": ["POST", "GET"]}})
 
-socketio = SocketIO(app, cors_allowed_origins="*", methods=['GET', 'POST'])
+
 
 locale.setlocale(locale.LC_ALL, "es_ES.UTF-8")
 dt = datetime.now()
@@ -85,19 +89,7 @@ URL_NODE = 'https://presupuestos.santiagomedical.cl/node/express/myapp'
 
 path_to_chromedriver = "C:\\Users\\Administrador\\Desktop\\chromedriver-win64\\chromedriver.exe" # actualiza esto con tu ruta
 
-@socketio.on('connect')
-def test_connect():
-    print('Client connected to flask')
 
-@socketio.on('disconnect')
-def test_disconnect():
-    print('Client disconnected to flask')
-
-@socketio.on('budget_changed')
-def handle_budget_changed(data):
-    print('Cambio de presupuesto recibido:', data)
-    # Aquí puedes actualizar tus componentes con los nuevos datos
-    socketio.emit('budget_changed', data)
 
 @app.route(f"{base_route}")
 def hello_world():
@@ -153,15 +145,94 @@ def is_chromedriver_running():
             return True
     return False
 
+
+@app.route(f'{base_route}/get_plantillas_medilink', methods=["POST"])
+def get_plantillas():
+    session = requests.Session()
+
+    # Adaptador sin reintentos
+    retry_strategy = Retry(
+        total=0,  # No reintentos
+        status_forcelist=[429, 500, 502, 503, 504],
+        
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    try:
+        
+        response = session.post('http://192.168.4.3:80/get_plantillas')
+        response.raise_for_status()  # Lanza una excepción si la respuesta contiene un código de estado HTTP de error
+
+    except requests.exceptions.HTTPError as http_err:
+        # Manejo específico para diferentes códigos de estado HTTP
+        if response.status_code == 400:
+            return jsonify({'message': 'Bad Request'}), 400
+        elif response.status_code == 401:
+            return jsonify({'message': 'Unauthorized'}), 401
+        elif response.status_code == 404:
+            return jsonify({'message': 'Not Found'}), 404
+        elif response.status_code == 500:
+            return jsonify({'message': 'Internal Server Error'}), 500
+        else:
+            return jsonify({'message': f'HTTP error occurred: {http_err}'}), response.status_code
+
+    except requests.exceptions.RequestException as err:
+        return jsonify({'message': f'Error occurred: {err}'}), 500
+    
+    try:
+        response_data = response.json()
+
+        message = response_data.get('message', 'No message')
+        plantillas = response_data.get('plantillas', 'No plantillas')
+        
+        if response.status_code == 200:
+            connect = conectar_bd()
+            cursor = connect.cursor()
+
+            cursor.execute("DELETE FROM plantillas")
+            connect.commit()
+
+            for plantilla in plantillas:
+                id_plantilla = plantilla['id']
+                nombre_plantilla = plantilla['name']
+                cursor.execute("INSERT INTO plantillas (id, name) VALUES (?, ?)", (id_plantilla, nombre_plantilla))
+            
+            connect.commit()
+            cursor.close()
+            connect.close()
+
+            return jsonify({'message': message, 'plantillas': plantillas}), 200
+        
+    except ValueError:  # Incluye json.JSONDecodeError
+        return jsonify({'message': f'Invalid JSON response: {response.text}'}), 500
+
 @app.route(f'{base_route}/start_scrapping', methods=["POST"])
 def start_bot_selenium_4_TEST():
+
     data = request.json
 
     if not data:
         return jsonify({'message': 'No data provided'}), 400
     
+    session = requests.Session()
+
+    # Adaptador sin reintentos
+    retry_strategy = Retry(
+        total=0,  # No reintentos
+        status_forcelist=[429, 500, 502, 503, 504],
+        
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
     try:
-        response = requests.post('http://192.168.4.3:80/scrapping_santiagomedical', json=data, timeout=900)
+        
+        response = session.post('http://192.168.4.3:80/scrapping_santiagomedical', json=data)
         response.raise_for_status()  # Lanza una excepción si la respuesta contiene un código de estado HTTP de error
 
     except requests.exceptions.HTTPError as http_err:
@@ -186,14 +257,12 @@ def start_bot_selenium_4_TEST():
         message = response_data.get('message', 'No message')
         pre_id = response_data.get('pre_id', 'No pre_id')
         filename = response_data.get('filename', 'No filename')
-        cookie_name = response_data.get('cookie_name', 'No cookie')
-
+        
         if response.status_code == 200:
             return jsonify({
                 'message': message,
                 'pre_id': pre_id,
                 'filename': filename,
-                'cookie_name': cookie_name
             })
 
     except ValueError:  # Incluye json.JSONDecodeError
@@ -876,7 +945,6 @@ def loginToken():
         print('Usuario Activo')
         # Mensaje socket
         
-        socketio.emit('budget_changed', f'Iniciando sesion usuario: {username}, inhabilitando sesiones activas')
         
     if not usuario or not check_password_hash(usuario.account_password, password):
 
@@ -1705,7 +1773,7 @@ def asociarAccountMedico():
             cursor.close()
             conn.close()
 
-            socketio.emit('update_med_disp', 'Se ha asociado un medico a un usuario. Actualizando lista.')
+           
             return jsonify({'message':'Validado'}), 200
         
         else:
@@ -1740,7 +1808,6 @@ def eliminarAccountMedico():
         cursor.close()
         conn.close()
 
-        socketio.emit('update_med_disp', 'Se ha quitado la asignacion de un medico, actualizando lista de medicos')
         return jsonify({'message':'Validado'}), 200
     
     except Exception as e:
@@ -1897,4 +1964,4 @@ def get_current_time():
     return jsonify({'current_time': now})
 
 if __name__ == "__main__":
-    socketio.run(host='0.0.0.0', debug = True)
+    app.run(host='0.0.0.0', debug = True, )
