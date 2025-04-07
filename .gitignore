@@ -1,0 +1,4 @@
+chrome/
+chromedriver/
+.venv/
+__pycache__/
