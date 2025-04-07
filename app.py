@@ -268,7 +268,6 @@ def start_bot_selenium_4_TEST():
     except ValueError:  # Incluye json.JSONDecodeError
         return jsonify({'message': f'Invalid JSON response: {response.text}'}), 500
 
-
 def save_cookies(browser, name_cookie):
     # Ruta al archivo
     file_path = name_cookie
@@ -1121,7 +1120,6 @@ def Usuarios():
         print(e)
         return jsonify({'message':'Error al obtener los datos de usuarios.'}), 401
 
-
 @app.route(f'{base_route}/add-user', methods=['POST'])
 @jwt_required()
 def AddUser():
@@ -1247,7 +1245,6 @@ def deshabilitar_usuario(idUsuario):
         resultado = 'Metodo no permitido.'
         return jsonify({'message':resultado}), 400
     
-
 @app.route(f'{base_route}/habilitar_usuario/<int:idUsuario>', methods=['POST'])
 @jwt_required()
 def habilitar_usuario(idUsuario):
